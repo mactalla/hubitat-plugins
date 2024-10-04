@@ -200,9 +200,16 @@ private void beginShift(ArrayList lights, Map segment) {
 
     int transitionTime = segment.next.delta / 1000
     int ct = segment.next.ct
-    ArrayList ctLights = lights.findAll { light -> light.hasCommand('colorTemperature') }
+    ArrayList ctLights = lights.findAll { light -> light.hasCommand('setColorTemperature') }
     ctLights.each { light ->
         int colorTemperature = light.currentValue('colorTemperature')
+        if (colorTemperature < segment.current.ct - 50 || colorTemperature > segment.current.ct + 50) {
+            log.debug "Light ${light.displayName} has a deviated colour temperature (${colorTemperature}). Snapping it to the expected ${segment.current.ct}"
+            light.setColorTemperature(ct, null, null)
+            pauseExecution(2000)
+            colorTemperature = light.currentValue('colorTemperature', true) // re-read, but skip the cache which is now 2s stale
+        }
+
         log.debug "Light ${light.displayName} has color temperature: ${colorTemperature}; will change it to ${ct} over ${transitionTime}s"
         light.setColorTemperature(ct, null, transitionTime)
     }
@@ -263,20 +270,23 @@ private void presetLevel(ArrayList devices, Map segment) {
 
 private void presetCT(ArrayList devices, Map segment) {
     log.info 'presetCT called'
+    log.debug "Devices: ${devices}"
     ArrayList ctDevices = devices.findAll { device -> device.hasCommand('setColorTemperature') }
     if (ctDevices.isEmpty() ) {
         return
     }
-    if (segment.range.ct == 0) {
-        // Nothing to do until the next segment
-        return
-    }
+    log.debug "CT devices: ${ctDevices}"
 
     int ct = segment.current.ct
     // FIXME: only the fancy Hue driver will let us preset with this command
     //        in the future we need to use the 0:0 scene (I think/hope)
     log.debug "pre-setting ${ctDevices} to ${ct}K"
     ctDevices*.setColorTemperature(ct, null, null)
+
+    if (segment.range.ct == 0) {
+        // Nothing to do until the next segment
+        return
+    }
 
     // number of seconds for 100 Kelvin delta
     // log.debug "range: ${segment.range.ms}ms / ${segment.range.ct} CT"
